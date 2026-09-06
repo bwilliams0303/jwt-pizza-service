@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "cd src && node index.js",
+    "start": "cd src && node --env-file=../.env index.js",
     "prestart": "bash scripts/db-up.sh",
     "db:up": "bash scripts/db-up.sh",
     "db:down": "docker compose down",

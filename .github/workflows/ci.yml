@@ -1,0 +1,78 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p$MYSQL_ROOT_PASSWORD --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate config.js from secrets
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+        run: |
+          cat > src/config.js <<EOF
+          module.exports = {
+            jwtSecret: '${JWT_SECRET}',
+            db: {
+              connection: {
+                host: '127.0.0.1',
+                user: 'root',
+                password: '${DB_PASSWORD}',
+                database: 'pizza',
+                connectTimeout: 60000,
+              },
+              listPerPage: 10,
+            },
+            factory: {
+              url: 'https://pizza-factory.cs329.click',
+              apiKey: '${FACTORY_API_KEY}',
+            },
+          };
+          EOF
+
+      - name: Start service
+        run: |
+          (cd src && node index.js &)
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3000/api/docs > /dev/null; then
+              echo "Service is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Service failed to start in time" >&2
+          exit 1
+
+      - name: Smoke test /api/docs
+        run: curl -sf http://localhost:3000/api/docs

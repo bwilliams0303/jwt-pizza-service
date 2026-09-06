@@ -7,7 +7,8 @@
       "name": "Launch Program",
       "skipFiles": ["<node_internals>/**"],
       "program": "${workspaceFolder}/src/index.js",
-      "runtimeArgs": ["--watch"]
+      "runtimeArgs": ["--watch"],
+      "envFile": "${workspaceFolder}/.env"
     }
   ]
 }
