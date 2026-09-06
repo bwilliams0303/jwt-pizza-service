@@ -6,4 +6,6 @@ config.js
 coverage
 dist
 .env
-.idea
+.idea/*
+!.idea/runConfigurations
+!.idea/runConfigurations/*.xml
