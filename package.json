@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "cd src && node --env-file=../.env index.js",
+    "test": "jest",
     "prestart": "bash scripts/db-up.sh",
     "db:up": "bash scripts/db-up.sh",
     "db:down": "docker compose down",
@@ -17,5 +18,9 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.9.7"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
   }
 }
