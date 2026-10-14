@@ -52,10 +52,38 @@ test('admin can update another user', async () => {
   expect(updateRes.body.user.id).toBe(testUserId);
 });
 
-test('delete user is not implemented', async () => {
-  const deleteRes = await request(app).delete(`/api/user/${testUserId}`).set('Authorization', `Bearer ${testUserAuthToken}`);
+test('delete user unauthorized', async () => {
+  const deleteRes = await request(app).delete(`/api/user/${testUserId}`);
+  expect(deleteRes.status).toBe(401);
+});
+
+test('delete user requires admin', async () => {
+  const [user] = await registerUser(request(app));
+  const deleteRes = await request(app).delete(`/api/user/${user.id}`).set('Authorization', `Bearer ${testUserAuthToken}`);
+  expect(deleteRes.status).toBe(403);
+});
+
+test('admin deletes user', async () => {
+  const [user, userToken] = await registerUser(request(app));
+  const adminToken = await loginAdmin();
+
+  const deleteRes = await request(app).delete(`/api/user/${user.id}`).set('Authorization', `Bearer ${adminToken}`);
   expect(deleteRes.status).toBe(200);
-  expect(deleteRes.body.message).toBe('not implemented');
+  expect(deleteRes.body).toEqual({ message: 'user deleted' });
+
+  // The user is gone from the list, logged out, and unable to log back in
+  const listUsersRes = await request(app).get('/api/user').query({ name: user.name }).set('Authorization', `Bearer ${adminToken}`);
+  expect(listUsersRes.body.users).toEqual([]);
+  const meRes = await request(app).get('/api/user/me').set('Authorization', `Bearer ${userToken}`);
+  expect(meRes.status).toBe(401);
+  const loginRes = await request(app).put('/api/auth').send({ email: user.email, password: user.password });
+  expect(loginRes.status).toBe(404);
+});
+
+test('delete unknown user', async () => {
+  const adminToken = await loginAdmin();
+  const deleteRes = await request(app).delete('/api/user/999999999').set('Authorization', `Bearer ${adminToken}`);
+  expect(deleteRes.status).toBe(404);
 });
 
 test('list users unauthorized', async () => {
