@@ -84,11 +84,33 @@ test('list users returns users with roles', async () => {
   const adminToken = await loginAdmin();
   const listUsersRes = await request(app)
     .get('/api/user')
+    .query({ name: user.name })
     .set('Authorization', 'Bearer ' + adminToken);
   expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users).toEqual([{ id: user.id, name: user.name, email: user.email, roles: [{ role: 'diner' }] }]);
+});
 
-  const listedUser = listUsersRes.body.users.find((u) => u.id === user.id);
-  expect(listedUser).toEqual({ id: user.id, name: user.name, email: user.email, roles: [{ role: 'diner' }] });
+test('list users filters by name with wildcards', async () => {
+  const suffix = randomName();
+  const [first] = await registerUser(request(app), `alpha ${suffix}`);
+  const [second] = await registerUser(request(app), `beta ${suffix}`);
+  const adminToken = await loginAdmin();
+  const listUsersRes = await request(app)
+    .get('/api/user')
+    .query({ name: `*${suffix}` })
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users.map((u) => u.id)).toEqual([first.id, second.id]);
+});
+
+test('list users filter with no matches', async () => {
+  const adminToken = await loginAdmin();
+  const listUsersRes = await request(app)
+    .get('/api/user')
+    .query({ name: randomName() })
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users).toEqual([]);
 });
 
 async function loginAdmin() {
@@ -97,9 +119,9 @@ async function loginAdmin() {
   return loginRes.body.token;
 }
 
-async function registerUser(service) {
+async function registerUser(service, name = `pizza diner ${randomName()}`) {
   const testUser = {
-    name: 'pizza diner',
+    name,
     email: `${randomName()}@test.com`,
     password: 'a',
   };

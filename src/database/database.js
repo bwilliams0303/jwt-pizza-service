@@ -75,10 +75,11 @@ class DB {
     }
   }
 
-  async getUsers() {
+  async getUsers(nameFilter = '*') {
     const connection = await this.getConnection();
+    nameFilter = nameFilter.replace(/\*/g, '%');
     try {
-      const users = await this.query(connection, `SELECT id, name, email FROM user ORDER BY id`);
+      const users = await this.query(connection, `SELECT id, name, email FROM user WHERE name LIKE ? ORDER BY id`, [nameFilter]);
       for (const user of users) {
         const roleResult = await this.query(connection, `SELECT * FROM userRole WHERE userId=?`, [user.id]);
         user.roles = roleResult.map((r) => {

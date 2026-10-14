@@ -86,7 +86,7 @@ userRouter.get(
     if (!req.user.isRole(Role.Admin)) {
       return res.status(403).json({ message: 'unauthorized' });
     }
-    const users = await DB.getUsers();
+    const users = await DB.getUsers(req.query.name);
     res.json({ users, more: false });
   })
 );
