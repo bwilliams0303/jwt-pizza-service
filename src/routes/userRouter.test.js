@@ -79,6 +79,18 @@ test('list users', async () => {
   expect(listUsersRes.status).toBe(200);
 });
 
+test('list users returns users with roles', async () => {
+  const [user] = await registerUser(request(app));
+  const adminToken = await loginAdmin();
+  const listUsersRes = await request(app)
+    .get('/api/user')
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(listUsersRes.status).toBe(200);
+
+  const listedUser = listUsersRes.body.users.find((u) => u.id === user.id);
+  expect(listedUser).toEqual({ id: user.id, name: user.name, email: user.email, roles: [{ role: 'diner' }] });
+});
+
 async function loginAdmin() {
   const admin = await createAdminUser();
   const loginRes = await request(app).put('/api/auth').send(admin);
