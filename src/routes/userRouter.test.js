@@ -103,6 +103,39 @@ test('list users filters by name with wildcards', async () => {
   expect(listUsersRes.body.users.map((u) => u.id)).toEqual([first.id, second.id]);
 });
 
+test('list users paginates', async () => {
+  const suffix = randomName();
+  const [first] = await registerUser(request(app), `one ${suffix}`);
+  const [second] = await registerUser(request(app), `two ${suffix}`);
+  const [third] = await registerUser(request(app), `three ${suffix}`);
+  const adminToken = await loginAdmin();
+
+  const page0Res = await request(app)
+    .get('/api/user')
+    .query({ page: 0, limit: 2, name: `*${suffix}` })
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(page0Res.status).toBe(200);
+  expect(page0Res.body.users.map((u) => u.id)).toEqual([first.id, second.id]);
+  expect(page0Res.body.more).toBe(true);
+
+  const page1Res = await request(app)
+    .get('/api/user')
+    .query({ page: 1, limit: 2, name: `*${suffix}` })
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(page1Res.status).toBe(200);
+  expect(page1Res.body.users.map((u) => u.id)).toEqual([third.id]);
+  expect(page1Res.body.more).toBe(false);
+});
+
+test('list users defaults to a page of 10', async () => {
+  const adminToken = await loginAdmin();
+  const listUsersRes = await request(app)
+    .get('/api/user')
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users.length).toBeLessThanOrEqual(10);
+});
+
 test('list users filter with no matches', async () => {
   const adminToken = await loginAdmin();
   const listUsersRes = await request(app)

@@ -75,18 +75,30 @@ class DB {
     }
   }
 
-  async getUsers(nameFilter = '*') {
+  async getUsers(page = 0, limit = 10, nameFilter = '*') {
     const connection = await this.getConnection();
+
+    // Query values arrive as strings and are interpolated into LIMIT/OFFSET, so force them to safe integers
+    page = Math.max(parseInt(page) || 0, 0);
+    limit = Math.max(parseInt(limit) || 10, 1);
+    const offset = page * limit;
     nameFilter = nameFilter.replace(/\*/g, '%');
+
     try {
-      const users = await this.query(connection, `SELECT id, name, email FROM user WHERE name LIKE ? ORDER BY id`, [nameFilter]);
+      let users = await this.query(connection, `SELECT id, name, email FROM user WHERE name LIKE ? ORDER BY id LIMIT ${limit + 1} OFFSET ${offset}`, [nameFilter]);
+
+      const more = users.length > limit;
+      if (more) {
+        users = users.slice(0, limit);
+      }
+
       for (const user of users) {
         const roleResult = await this.query(connection, `SELECT * FROM userRole WHERE userId=?`, [user.id]);
         user.roles = roleResult.map((r) => {
           return { objectId: r.objectId || undefined, role: r.role };
         });
       }
-      return users;
+      return [users, more];
     } finally {
       connection.end();
     }

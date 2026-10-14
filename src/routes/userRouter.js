@@ -8,7 +8,7 @@ const userRouter = express.Router();
 userRouter.docs = [
   {
     method: 'GET',
-    path: '/api/user?page=1&limit=10&name=*',
+    path: '/api/user?page=0&limit=10&name=*',
     requiresAuth: true,
     description: 'Gets a list of users',
     example: `curl -X GET localhost:3000/api/user -H 'Authorization: Bearer tttttt'`,
@@ -86,8 +86,8 @@ userRouter.get(
     if (!req.user.isRole(Role.Admin)) {
       return res.status(403).json({ message: 'unauthorized' });
     }
-    const users = await DB.getUsers(req.query.name);
-    res.json({ users, more: false });
+    const [users, more] = await DB.getUsers(req.query.page, req.query.limit, req.query.name);
+    res.json({ users, more });
   })
 );
 
