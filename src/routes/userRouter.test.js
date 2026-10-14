@@ -63,13 +63,27 @@ test('list users unauthorized', async () => {
   expect(listUsersRes.status).toBe(401);
 });
 
-test('list users', async () => {
+test('list users requires admin', async () => {
   const [, userToken] = await registerUser(request(app));
   const listUsersRes = await request(app)
     .get('/api/user')
     .set('Authorization', 'Bearer ' + userToken);
+  expect(listUsersRes.status).toBe(403);
+});
+
+test('list users', async () => {
+  const adminToken = await loginAdmin();
+  const listUsersRes = await request(app)
+    .get('/api/user')
+    .set('Authorization', 'Bearer ' + adminToken);
   expect(listUsersRes.status).toBe(200);
 });
+
+async function loginAdmin() {
+  const admin = await createAdminUser();
+  const loginRes = await request(app).put('/api/auth').send(admin);
+  return loginRes.body.token;
+}
 
 async function registerUser(service) {
   const testUser = {

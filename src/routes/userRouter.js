@@ -83,6 +83,9 @@ userRouter.get(
   '/',
   authRouter.authenticateToken,
   asyncHandler(async (req, res) => {
+    if (!req.user.isRole(Role.Admin)) {
+      return res.status(403).json({ message: 'unauthorized' });
+    }
     res.json({ message: 'not implemented', users: [], more: false });
   })
 );
