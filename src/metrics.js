@@ -1,6 +1,23 @@
 const os = require('os');
 const config = require('./config.js');
 
+const requestsByMethod = {};
+let endpointLatencyMs = 0;
+
+// Express middleware that counts each request by method and adds its duration to the endpoint latency total.
+function requestTracker(req, res, next) {
+  const start = Date.now();
+  res.on('finish', () => {
+    requestsByMethod[req.method] = (requestsByMethod[req.method] ?? 0) + 1;
+    endpointLatencyMs += Date.now() - start;
+  });
+  next();
+}
+
+function httpMetrics() {
+  return [...Object.entries(requestsByMethod).map(([method, count]) => createMetric('requests', count, 'sum', '1', { method })), createMetric('endpoint_latency', endpointLatencyMs, 'sum', 'ms')];
+}
+
 function getCpuUsagePercentage() {
   const cpuUsage = os.loadavg()[0] / os.cpus().length;
   return Number((cpuUsage * 100).toFixed(2));
@@ -50,8 +67,8 @@ async function sendToGrafana(metrics) {
 
 function sendMetricsPeriodically(period) {
   return setInterval(() => {
-    sendToGrafana(systemMetrics());
+    sendToGrafana([...httpMetrics(), ...systemMetrics()]);
   }, period);
 }
 
-module.exports = { sendMetricsPeriodically };
+module.exports = { requestTracker, sendMetricsPeriodically };
