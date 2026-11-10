@@ -72,7 +72,8 @@ function userMetrics() {
       lastSeenByUser.delete(userId);
     }
   }
-  return [createMetric('active_users', lastSeenByUser.size, 'gauge', '1')];
+  // A gauge with unit '1' is stored as active_users_ratio, so use a {users} annotation, which is left out of the name.
+  return [createMetric('active_users', lastSeenByUser.size, 'gauge', '{users}')];
 }
 
 function getCpuUsagePercentage() {
