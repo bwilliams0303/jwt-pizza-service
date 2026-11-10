@@ -56,7 +56,8 @@ function sumValue(sent, name, attributes = {}) {
   const metric = sent.find((m) => m.name === name && hasAttributes(m, attributes));
   expect(metric.sum.aggregationTemporality).toBe('AGGREGATION_TEMPORALITY_CUMULATIVE');
   expect(metric.sum.isMonotonic).toBe(true);
-  return metric.sum.dataPoints[0].asInt;
+  const [point] = metric.sum.dataPoints;
+  return point.asInt ?? point.asDouble;
 }
 
 test('counts requests by method and totals their latency', () => {
@@ -91,6 +92,21 @@ test('counts successful and failed login attempts', () => {
   const { metrics: sent } = sentMetrics();
   expect(sumValue(sent, 'auth_attempts', { status: 'success' })).toBe(2);
   expect(sumValue(sent, 'auth_attempts', { status: 'failure' })).toBe(1);
+});
+
+test('records pizza sales, revenue, failures, and factory latency', () => {
+  metrics.pizzaPurchase(true, 120, [{ price: 0.05 }, { price: 0.0038 }]);
+  metrics.pizzaPurchase(false, 30, [{ price: 1 }]);
+  timer = metrics.sendMetricsPeriodically(PERIOD);
+
+  jest.advanceTimersByTime(PERIOD);
+
+  const { metrics: sent } = sentMetrics();
+  expect(sumValue(sent, 'pizza_orders')).toBe(2);
+  expect(sumValue(sent, 'pizzas_sold')).toBe(2);
+  expect(sumValue(sent, 'pizza_creation_failures')).toBe(1);
+  expect(sumValue(sent, 'revenue')).toBeCloseTo(0.0538);
+  expect(sumValue(sent, 'pizza_latency')).toBe(150);
 });
 
 function activeUsers() {

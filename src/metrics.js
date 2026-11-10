@@ -7,6 +7,7 @@ const requestsByMethod = {};
 let endpointLatencyMs = 0;
 const authAttempts = { success: 0, failure: 0 };
 const lastSeenByUser = new Map();
+const purchases = { orders: 0, pizzasSold: 0, failures: 0, revenue: 0, latencyMs: 0 };
 
 // Express middleware that counts each request by method and adds its duration to the endpoint latency total.
 function requestTracker(req, res, next) {
@@ -33,12 +34,34 @@ function userActive(userId) {
   lastSeenByUser.set(userId, Date.now());
 }
 
+// Records one pizza factory order. Successful orders add their pizzas and prices; failed orders count as creation failures.
+function pizzaPurchase(success, latencyMs, items) {
+  purchases.orders++;
+  purchases.latencyMs += latencyMs;
+  if (success) {
+    purchases.pizzasSold += items.length;
+    purchases.revenue += items.reduce((total, item) => total + item.price, 0);
+  } else {
+    purchases.failures++;
+  }
+}
+
 function httpMetrics() {
   return [...Object.entries(requestsByMethod).map(([method, count]) => createMetric('requests', count, 'sum', '1', { method })), createMetric('endpoint_latency', endpointLatencyMs, 'sum', 'ms')];
 }
 
 function authMetrics() {
   return Object.entries(authAttempts).map(([status, count]) => createMetric('auth_attempts', count, 'sum', '1', { status }));
+}
+
+function purchaseMetrics() {
+  return [
+    createMetric('pizza_orders', purchases.orders, 'sum', '1'),
+    createMetric('pizzas_sold', purchases.pizzasSold, 'sum', '1'),
+    createMetric('pizza_creation_failures', purchases.failures, 'sum', '1'),
+    createMetric('revenue', purchases.revenue, 'sum', '1'),
+    createMetric('pizza_latency', purchases.latencyMs, 'sum', 'ms'),
+  ];
 }
 
 // Active users are the distinct users seen within the last ACTIVE_USER_WINDOW_MS.
@@ -101,8 +124,8 @@ async function sendToGrafana(metrics) {
 
 function sendMetricsPeriodically(period) {
   return setInterval(() => {
-    sendToGrafana([...httpMetrics(), ...authMetrics(), ...userMetrics(), ...systemMetrics()]);
+    sendToGrafana([...httpMetrics(), ...authMetrics(), ...userMetrics(), ...purchaseMetrics(), ...systemMetrics()]);
   }, period);
 }
 
-module.exports = { requestTracker, authTracker, userActive, sendMetricsPeriodically };
+module.exports = { requestTracker, authTracker, userActive, pizzaPurchase, sendMetricsPeriodically };
