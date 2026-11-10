@@ -1,8 +1,12 @@
 const os = require('os');
 const config = require('./config.js');
 
+const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
+
 const requestsByMethod = {};
 let endpointLatencyMs = 0;
+const authAttempts = { success: 0, failure: 0 };
+const lastSeenByUser = new Map();
 
 // Express middleware that counts each request by method and adds its duration to the endpoint latency total.
 function requestTracker(req, res, next) {
@@ -10,12 +14,42 @@ function requestTracker(req, res, next) {
   res.on('finish', () => {
     requestsByMethod[req.method] = (requestsByMethod[req.method] ?? 0) + 1;
     endpointLatencyMs += Date.now() - start;
+    if (req.user) {
+      userActive(req.user.id);
+    }
   });
   next();
 }
 
+// Express middleware for the login route that counts the attempt as a success or failure from the response status.
+function authTracker(req, res, next) {
+  res.on('finish', () => {
+    authAttempts[res.statusCode < 400 ? 'success' : 'failure']++;
+  });
+  next();
+}
+
+function userActive(userId) {
+  lastSeenByUser.set(userId, Date.now());
+}
+
 function httpMetrics() {
   return [...Object.entries(requestsByMethod).map(([method, count]) => createMetric('requests', count, 'sum', '1', { method })), createMetric('endpoint_latency', endpointLatencyMs, 'sum', 'ms')];
+}
+
+function authMetrics() {
+  return Object.entries(authAttempts).map(([status, count]) => createMetric('auth_attempts', count, 'sum', '1', { status }));
+}
+
+// Active users are the distinct users seen within the last ACTIVE_USER_WINDOW_MS.
+function userMetrics() {
+  const cutoff = Date.now() - ACTIVE_USER_WINDOW_MS;
+  for (const [userId, lastSeen] of lastSeenByUser) {
+    if (lastSeen < cutoff) {
+      lastSeenByUser.delete(userId);
+    }
+  }
+  return [createMetric('active_users', lastSeenByUser.size, 'gauge', '1')];
 }
 
 function getCpuUsagePercentage() {
@@ -67,8 +101,8 @@ async function sendToGrafana(metrics) {
 
 function sendMetricsPeriodically(period) {
   return setInterval(() => {
-    sendToGrafana([...httpMetrics(), ...systemMetrics()]);
+    sendToGrafana([...httpMetrics(), ...authMetrics(), ...userMetrics(), ...systemMetrics()]);
   }, period);
 }
 
-module.exports = { requestTracker, sendMetricsPeriodically };
+module.exports = { requestTracker, authTracker, userActive, sendMetricsPeriodically };

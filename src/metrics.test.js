@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function sentMetrics() {
-  const [url, options] = global.fetch.mock.calls[0];
+  const [url, options] = global.fetch.mock.calls.at(-1);
   return { url, options, metrics: JSON.parse(options.body).resourceMetrics[0].scopeMetrics[0].metrics };
 }
 
@@ -29,7 +29,7 @@ test('sends cpu and memory gauges each period', () => {
   const { url, options, metrics: sent } = sentMetrics();
   expect(url).toBe(config.metrics.endpointUrl);
   expect(options.headers.Authorization).toBe(`Bearer ${config.metrics.accountId}:${config.metrics.apiKey}`);
-  const gauges = sent.filter((m) => m.gauge);
+  const gauges = sent.filter((m) => m.unit === '%');
   expect(gauges.map((m) => m.name)).toEqual(['cpu', 'memory']);
   for (const metric of gauges) {
     expect(metric.unit).toBe('%');
@@ -38,17 +38,22 @@ test('sends cpu and memory gauges each period', () => {
   }
 });
 
-function trackRequest(method, durationMs) {
+function trackRequest(method, durationMs, user) {
   const res = new EventEmitter();
   const next = jest.fn();
-  metrics.requestTracker({ method }, res, next);
+  metrics.requestTracker({ method, user }, res, next);
   expect(next).toHaveBeenCalled();
   jest.advanceTimersByTime(durationMs);
   res.emit('finish');
 }
 
-function sumValue(sent, name, method) {
-  const metric = sent.find((m) => m.name === name && (!method || m.sum.dataPoints[0].attributes.some((a) => a.key === 'method' && a.value.stringValue === method)));
+function hasAttributes(metric, attributes) {
+  const pointAttributes = (metric.sum ?? metric.gauge).dataPoints[0].attributes;
+  return Object.entries(attributes).every(([key, value]) => pointAttributes.some((a) => a.key === key && a.value.stringValue === value));
+}
+
+function sumValue(sent, name, attributes = {}) {
+  const metric = sent.find((m) => m.name === name && hasAttributes(m, attributes));
   expect(metric.sum.aggregationTemporality).toBe('AGGREGATION_TEMPORALITY_CUMULATIVE');
   expect(metric.sum.isMonotonic).toBe(true);
   return metric.sum.dataPoints[0].asInt;
@@ -63,9 +68,47 @@ test('counts requests by method and totals their latency', () => {
   jest.advanceTimersByTime(PERIOD);
 
   const { metrics: sent } = sentMetrics();
-  expect(sumValue(sent, 'requests', 'GET')).toBe(2);
-  expect(sumValue(sent, 'requests', 'POST')).toBe(1);
+  expect(sumValue(sent, 'requests', { method: 'GET' })).toBe(2);
+  expect(sumValue(sent, 'requests', { method: 'POST' })).toBe(1);
   expect(sumValue(sent, 'endpoint_latency')).toBe(100);
+});
+
+function trackLogin(statusCode) {
+  const res = new EventEmitter();
+  res.statusCode = statusCode;
+  metrics.authTracker({}, res, jest.fn());
+  res.emit('finish');
+}
+
+test('counts successful and failed login attempts', () => {
+  trackLogin(200);
+  trackLogin(200);
+  trackLogin(404);
+  timer = metrics.sendMetricsPeriodically(PERIOD);
+
+  jest.advanceTimersByTime(PERIOD);
+
+  const { metrics: sent } = sentMetrics();
+  expect(sumValue(sent, 'auth_attempts', { status: 'success' })).toBe(2);
+  expect(sumValue(sent, 'auth_attempts', { status: 'failure' })).toBe(1);
+});
+
+function activeUsers() {
+  return sentMetrics().metrics.find((m) => m.name === 'active_users').gauge.dataPoints[0].asInt;
+}
+
+test('counts users seen in the last five minutes as active', () => {
+  metrics.userActive(1);
+  jest.advanceTimersByTime(4 * 60 * 1000);
+  trackRequest('GET', 10, { id: 2 });
+  trackRequest('GET', 10, { id: 2 });
+  timer = metrics.sendMetricsPeriodically(PERIOD);
+
+  jest.advanceTimersByTime(PERIOD);
+  expect(activeUsers()).toBe(2);
+
+  jest.advanceTimersByTime(60 * 1000);
+  expect(activeUsers()).toBe(1);
 });
 
 test('logs when Grafana rejects metrics', async () => {
