@@ -96,3 +96,59 @@ test('a network failure is reported without throwing', async () => {
   await new Promise(process.nextTick);
   expect(console.error).toHaveBeenCalledWith('Error sending log to Grafana:', 'offline');
 });
+
+function sendThroughHttpLogger(req, statusCode, body) {
+  const originalSend = jest.fn();
+  const res = { statusCode: 200, send: originalSend };
+  const next = jest.fn();
+  logger.httpLogger({ headers: {}, ...req }, res, next);
+  expect(next).toHaveBeenCalled();
+  expect(global.fetch).not.toHaveBeenCalled();
+
+  res.statusCode = statusCode;
+  res.send(body);
+  expect(originalSend).toHaveBeenCalledWith(body);
+  expect(res.send).toBe(originalSend);
+  return sentLog();
+}
+
+test('httpLogger logs the request and response once the response is sent', () => {
+  const req = { method: 'PUT', originalUrl: '/api/auth', body: { email: 'd@jwt.com', password: 'diner' } };
+  const resBody = JSON.stringify({ user: { id: 3, email: 'd@jwt.com' }, token: 'abc' });
+
+  const { labels, data } = sendThroughHttpLogger(req, 200, resBody);
+
+  expect(labels).toMatchObject({ level: 'info', type: 'http' });
+  expect(data).toEqual({
+    authorized: false,
+    user: null,
+    method: 'PUT',
+    path: '/api/auth',
+    statusCode: 200,
+    reqBody: { email: 'd@jwt.com', password: MASK },
+    resBody: { user: { id: 3, email: 'd@jwt.com' }, token: MASK },
+  });
+});
+
+test('httpLogger identifies the authenticated user', () => {
+  const user = { id: 3, name: 'pizza diner', email: 'd@jwt.com', roles: [{ role: 'diner' }], iat: 1 };
+  const req = { method: 'GET', originalUrl: '/api/order', headers: { authorization: 'Bearer abc' }, user };
+
+  const { data } = sendThroughHttpLogger(req, 200, { orders: [] });
+
+  expect(data.authorized).toBe(true);
+  expect(data.user).toEqual({ id: 3, name: 'pizza diner', email: 'd@jwt.com' });
+  expect(data.resBody).toEqual({ orders: [] });
+});
+
+test.each([
+  [200, 'info'],
+  [404, 'warn'],
+  [500, 'error'],
+])('httpLogger logs status %i at level %s', (statusCode, level) => {
+  const { labels, data } = sendThroughHttpLogger({ method: 'GET', originalUrl: '/' }, statusCode, 'plain text');
+
+  expect(labels.level).toBe(level);
+  expect(data.statusCode).toBe(statusCode);
+  expect(data.resBody).toBe('plain text');
+});

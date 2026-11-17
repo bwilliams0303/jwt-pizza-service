@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../service');
 const { Role, DB } = require('../database/database.js');
+const config = require('../config.js');
 
 let adminAuthToken;
 let dinerAuthToken;
@@ -44,9 +45,14 @@ test('get menu', async () => {
   expect(menuRes.body).toEqual(expect.arrayContaining([expect.objectContaining({ id: menuItem.id })]));
 });
 
+// Don't call the real pizza factory from a test. Only factory calls get this response; other fetches (logging) are unaffected.
+function mockFactory(response) {
+  const otherFetch = global.fetch;
+  jest.spyOn(global, 'fetch').mockImplementation((url, options) => (String(url).startsWith(config.factory.url) ? Promise.resolve(response) : otherFetch(url, options)));
+}
+
 test('create order', async () => {
-  // Don't call the real pizza factory from a test.
-  jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ reportUrl: 'http://report', jwt: 'factory.jwt.token' }) });
+  mockFactory({ ok: true, json: async () => ({ reportUrl: 'http://report', jwt: 'factory.jwt.token' }) });
 
   const order = { franchiseId: 1, storeId: 1, items: [{ menuId: menuItem.id, description: menuItem.title, price: menuItem.price }] };
   const orderRes = await request(app).post('/api/order').set('Authorization', `Bearer ${dinerAuthToken}`).send(order);
@@ -57,7 +63,7 @@ test('create order', async () => {
 });
 
 test('create order fails when factory fails', async () => {
-  jest.spyOn(global, 'fetch').mockResolvedValue({ ok: false, json: async () => ({ reportUrl: 'http://report' }) });
+  mockFactory({ ok: false, json: async () => ({ reportUrl: 'http://report' }) });
 
   const order = { franchiseId: 1, storeId: 1, items: [{ menuId: menuItem.id, description: menuItem.title, price: menuItem.price }] };
   const orderRes = await request(app).post('/api/order').set('Authorization', `Bearer ${dinerAuthToken}`).send(order);

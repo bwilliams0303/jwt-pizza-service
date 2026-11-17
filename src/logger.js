@@ -46,6 +46,48 @@ function sanitize(value, key = '') {
   return value;
 }
 
+// Express middleware that logs every request once its response is sent. Install it after express.json() so req.body is parsed.
+function httpLogger(req, res, next) {
+  const send = res.send;
+  res.send = (resBody) => {
+    res.send = send;
+    log(statusToLogLevel(res.statusCode), 'http', {
+      authorized: !!req.headers.authorization,
+      user: describeUser(req.user),
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      reqBody: req.body,
+      resBody: parseBody(resBody),
+    });
+    return res.send(resBody);
+  };
+  next();
+}
+
+function statusToLogLevel(statusCode) {
+  if (statusCode >= 500) return 'error';
+  if (statusCode >= 400) return 'warn';
+  return 'info';
+}
+
+// Only the fields that identify the user; null when the request is not authenticated.
+function describeUser(user) {
+  return user ? { id: user.id, name: user.name, email: user.email } : null;
+}
+
+// res.json hands res.send a JSON string. Parse it back so sensitive fields can be masked by key.
+function parseBody(body) {
+  if (typeof body !== 'string') {
+    return body;
+  }
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
 // Sends one sanitized log event to Grafana Loki. Level and type are indexed labels; logData becomes the JSON log line.
 function log(level, type, logData) {
   const labels = { component: config.logging.source, level, type };
@@ -74,4 +116,4 @@ async function sendLogToGrafana(event) {
   }
 }
 
-module.exports = { log, sanitize };
+module.exports = { httpLogger, log, sanitize };
