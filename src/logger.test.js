@@ -152,3 +152,29 @@ test.each([
   expect(data.statusCode).toBe(statusCode);
   expect(data.resBody).toBe('plain text');
 });
+
+test('dbLogger logs the SQL statement with the user of the current request', async () => {
+  const user = { id: 3, name: 'pizza diner', email: 'd@jwt.com' };
+  const req = { headers: {}, user: undefined };
+  const sql = 'SELECT * FROM menu';
+
+  await new Promise((resolve) => {
+    logger.httpLogger(req, { send: jest.fn() }, async () => {
+      // The user is set by a later middleware, after an asynchronous token check.
+      await Promise.resolve();
+      req.user = user;
+      logger.dbLogger(sql);
+      resolve();
+    });
+  });
+
+  const { labels, data } = sentLog();
+  expect(labels).toMatchObject({ level: 'info', type: 'db' });
+  expect(data).toEqual({ user, sql });
+});
+
+test('dbLogger logs a null user outside a request', () => {
+  logger.dbLogger("UPDATE user SET password='$2b$10$hash' WHERE id=3");
+
+  expect(sentLog().data).toEqual({ user: null, sql: `UPDATE user SET password='${MASK}' WHERE id=3` });
+});

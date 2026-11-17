@@ -1,4 +1,8 @@
+const { AsyncLocalStorage } = require('async_hooks');
 const config = require('./config.js');
+
+// Holds the request being handled so database and factory logs can name its user without the request being passed around.
+const requestContext = new AsyncLocalStorage();
 
 const MASK = '*****';
 
@@ -62,7 +66,17 @@ function httpLogger(req, res, next) {
     });
     return res.send(resBody);
   };
-  next();
+  requestContext.run(req, next);
+}
+
+// Logs one SQL statement. Parameter values are left out because they carry password hashes and token signatures.
+function dbLogger(sql) {
+  log('info', 'db', { user: currentUser(), sql });
+}
+
+// The authenticated user of the request being handled, or null outside a request or before authentication.
+function currentUser() {
+  return describeUser(requestContext.getStore()?.user);
 }
 
 function statusToLogLevel(statusCode) {
@@ -116,4 +130,4 @@ async function sendLogToGrafana(event) {
   }
 }
 
-module.exports = { httpLogger, log, sanitize };
+module.exports = { httpLogger, dbLogger, log, sanitize };
