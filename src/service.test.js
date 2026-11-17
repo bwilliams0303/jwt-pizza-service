@@ -26,3 +26,15 @@ test('unknown endpoint', async () => {
   expect(res.status).toBe(404);
   expect(res.body.message).toBe('unknown endpoint');
 });
+
+test('a request that throws is logged as an exception', async () => {
+  const fetchSpy = jest.spyOn(global, 'fetch');
+
+  const res = await request(app).put('/api/auth').set('Content-Type', 'application/json').send('{ not json');
+
+  expect(res.status).toBe(400);
+  const logged = fetchSpy.mock.calls.map(([, options]) => JSON.parse(options.body).streams[0]);
+  const exception = logged.find((stream) => stream.stream.type === 'exception');
+  expect(exception.stream.level).toBe('warn');
+  expect(JSON.parse(exception.values[0][1])).toMatchObject({ method: 'PUT', path: '/api/auth', message: expect.stringContaining('JSON') });
+});

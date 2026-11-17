@@ -79,6 +79,19 @@ function factoryLogger(ok, reqBody, resBody) {
   log(ok ? 'info' : 'error', 'factory', { user: currentUser(), reqBody, resBody });
 }
 
+// Express error middleware that logs every error reaching the default error handler, then passes it on.
+function errorLogger(err, req, res, next) {
+  // Use req.user directly: errors from before httpLogger runs (a malformed JSON body) have no request context.
+  exceptionLogger(err, { user: describeUser(req.user), method: req.method, path: req.originalUrl });
+  next(err);
+}
+
+// Logs an exception. Errors without a status code are unexpected failures and are logged at error level.
+// Returns a promise that settles once the log is sent so a crashing process can wait for it.
+function exceptionLogger(err, context = {}) {
+  return log(statusToLogLevel(err?.statusCode ?? 500), 'exception', { user: currentUser(), ...context, message: err?.message ?? String(err), stack: err?.stack });
+}
+
 // The authenticated user of the request being handled, or null outside a request or before authentication.
 function currentUser() {
   return describeUser(requestContext.getStore()?.user);
@@ -111,7 +124,7 @@ function parseBody(body) {
 function log(level, type, logData) {
   const labels = { component: config.logging.source, level, type };
   const values = [nowString(), JSON.stringify(sanitize(logData))];
-  sendLogToGrafana({ streams: [{ stream: labels, values: [values] }] });
+  return sendLogToGrafana({ streams: [{ stream: labels, values: [values] }] });
 }
 
 // Loki timestamps are unix epoch nanoseconds.
@@ -135,4 +148,4 @@ async function sendLogToGrafana(event) {
   }
 }
 
-module.exports = { httpLogger, dbLogger, factoryLogger, log, sanitize };
+module.exports = { httpLogger, dbLogger, factoryLogger, errorLogger, exceptionLogger, log, sanitize };

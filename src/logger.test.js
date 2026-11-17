@@ -201,3 +201,32 @@ test('factoryLogger logs a failed factory call as an error', () => {
   expect(labels.level).toBe('error');
   expect(data.resBody).toEqual({ message: 'chaos' });
 });
+
+test('errorLogger logs the exception and passes it on', () => {
+  const err = new Error('database is down');
+  const user = { id: 3, name: 'pizza diner', email: 'd@jwt.com' };
+  const next = jest.fn();
+
+  logger.errorLogger(err, { method: 'GET', originalUrl: '/api/order', user }, {}, next);
+
+  expect(next).toHaveBeenCalledWith(err);
+  const { labels, data } = sentLog();
+  expect(labels).toMatchObject({ level: 'error', type: 'exception' });
+  expect(data).toEqual({ user, method: 'GET', path: '/api/order', message: 'database is down', stack: err.stack });
+});
+
+test('exceptionLogger logs client errors as warnings', () => {
+  const err = Object.assign(new Error('unknown user'), { statusCode: 404 });
+
+  logger.exceptionLogger(err);
+
+  expect(sentLog().labels.level).toBe('warn');
+});
+
+test('exceptionLogger sanitizes the message and handles non-errors', async () => {
+  await logger.exceptionLogger("query failed: UPDATE user SET password='hash'", { origin: 'unhandledRejection' });
+
+  const { labels, data } = sentLog();
+  expect(labels.level).toBe('error');
+  expect(data).toEqual({ user: null, origin: 'unhandledRejection', message: `query failed: UPDATE user SET password='${MASK}'` });
+});
