@@ -178,3 +178,26 @@ test('dbLogger logs a null user outside a request', () => {
 
   expect(sentLog().data).toEqual({ user: null, sql: `UPDATE user SET password='${MASK}' WHERE id=3` });
 });
+
+function logFactoryCall(ok, reqBody, resBody) {
+  const user = { id: 3, name: 'pizza diner', email: 'd@jwt.com' };
+  logger.httpLogger({ headers: {}, user }, { send: jest.fn() }, () => logger.factoryLogger(ok, reqBody, resBody));
+  return { user, ...sentLog() };
+}
+
+test('factoryLogger logs the factory request and response with the current user', () => {
+  const reqBody = { diner: { id: 3 }, order: { id: 7, items: [{ menuId: 1, price: 0.05 }] } };
+  const resBody = { reportUrl: 'http://report', jwt: 'factory.jwt.token' };
+
+  const { user, labels, data } = logFactoryCall(true, reqBody, resBody);
+
+  expect(labels).toMatchObject({ level: 'info', type: 'factory' });
+  expect(data).toEqual({ user, reqBody, resBody: { reportUrl: 'http://report', jwt: MASK } });
+});
+
+test('factoryLogger logs a failed factory call as an error', () => {
+  const { labels, data } = logFactoryCall(false, { order: { id: 7 } }, { message: 'chaos' });
+
+  expect(labels.level).toBe('error');
+  expect(data.resBody).toEqual({ message: 'chaos' });
+});

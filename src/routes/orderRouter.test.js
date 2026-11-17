@@ -2,6 +2,7 @@ const request = require('supertest');
 const app = require('../service');
 const { Role, DB } = require('../database/database.js');
 const config = require('../config.js');
+const logger = require('../logger.js');
 
 let adminAuthToken;
 let dinerAuthToken;
@@ -53,6 +54,7 @@ function mockFactory(response) {
 
 test('create order', async () => {
   mockFactory({ ok: true, json: async () => ({ reportUrl: 'http://report', jwt: 'factory.jwt.token' }) });
+  const factoryLogger = jest.spyOn(logger, 'factoryLogger');
 
   const order = { franchiseId: 1, storeId: 1, items: [{ menuId: menuItem.id, description: menuItem.title, price: menuItem.price }] };
   const orderRes = await request(app).post('/api/order').set('Authorization', `Bearer ${dinerAuthToken}`).send(order);
@@ -60,6 +62,7 @@ test('create order', async () => {
   expect(orderRes.body.order).toMatchObject(order);
   expect(orderRes.body.jwt).toBe('factory.jwt.token');
   expect(orderRes.body.followLinkToEndChaos).toBe('http://report');
+  expect(factoryLogger).toHaveBeenCalledWith(true, { diner: expect.objectContaining({ email: expect.any(String) }), order: expect.objectContaining(order) }, { reportUrl: 'http://report', jwt: 'factory.jwt.token' });
 });
 
 test('create order fails when factory fails', async () => {
